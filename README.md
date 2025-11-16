@@ -115,4 +115,4 @@ Contributions welcome! Please ensure any data additions include proper source do
 
 ---
 
-Love from Ringmast4r 😘
+Made with Love from Ringmast4r 😘
