@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Police Surveillance Capabilities Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        #map {
+            height: calc(100vh - 60px);
+            width: 100%;
+        }
+        .header {
+            background: #2d2d2d;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #ff4444;
+        }
+        .header h1 {
+            font-size: 20px;
+            color: #ff4444;
+        }
+        .stats {
+            font-size: 14px;
+            color: #888;
+        }
+        .controls {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            z-index: 1000;
+            background: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            max-width: 300px;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+        }
+        .controls h3 {
+            margin-bottom: 10px;
+            color: #ff4444;
+            font-size: 14px;
+        }
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .filter-group select, .filter-group input {
+            width: 100%;
+            padding: 8px;
+            background: #3d3d3d;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .filter-group select:focus, .filter-group input:focus {
+            outline: none;
+            border-color: #ff4444;
+        }
+        .tech-filters {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #3d3d3d;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .tech-filter {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+            font-size: 12px;
+        }
+        .tech-filter input {
+            width: auto;
+            margin-right: 6px;
+        }
+        .tech-filter span {
+            color: #ccc;
+        }
+        .tech-count {
+            color: #888;
+            margin-left: 4px;
+        }
+        button {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #ff6666;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #2d2d2d;
+            padding: 30px;
+            border-radius: 8px;
+            z-index: 2000;
+            text-align: center;
+        }
+        .loading-spinner {
+            border: 4px solid #3d3d3d;
+            border-top: 4px solid #ff4444;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .leaflet-popup-content-wrapper {
+            background: #2d2d2d;
+            color: #e0e0e0;
+            border-radius: 8px;
+        }
+        .leaflet-popup-tip {
+            background: #2d2d2d;
+        }
+        .popup-content {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .popup-content h4 {
+            color: #ff4444;
+            margin-bottom: 8px;
+        }
+        .popup-content .tech-item {
+            background: #3d3d3d;
+            padding: 8px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .popup-content .tech-type {
+            color: #ff4444;
+            font-weight: bold;
+        }
+        .popup-content .vendor {
+            color: #888;
+        }
+        .popup-content a {
+            color: #6699ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Police Surveillance Capabilities Map</h1>
+        <div class="stats">
+            <span id="total-records">Loading...</span> |
+            <span id="visible-records">-</span> visible |
+            <span id="locations-count">-</span> locations
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="controls">
+        <h3>FILTERS</h3>
+
+        <div class="filter-group">
+            <label>Search Agency/City</label>
+            <input type="text" id="search" placeholder="Type to search...">
+        </div>
+
+        <div class="filter-group">
+            <label>State</label>
+            <select id="state-filter">
+                <option value="">All States</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Technology Types</label>
+            <div class="tech-filters" id="tech-filters"></div>
+        </div>
+
+        <button onclick="applyFilters()">Apply Filters</button>
+        <button onclick="resetFilters()" style="background: #555;">Reset</button>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="loading-spinner"></div>
+        <div>Loading surveillance data...</div>
+        <div id="load-status" style="font-size: 12px; color: #888; margin-top: 10px;"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([39.8283, -98.5795], 4);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+
+        let allData = [];
+        let markers = L.markerClusterGroup({
+            chunkedLoading: true,
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            iconCreateFunction: function(cluster) {
+                const count = cluster.getChildCount();
+                let size = 'small';
+                if (count > 100) size = 'large';
+                else if (count > 10) size = 'medium';
+
+                return L.divIcon({
+                    html: `<div><span>${count}</span></div>`,
+                    className: `marker-cluster marker-cluster-${size}`,
+                    iconSize: L.point(40, 40)
+                });
+            }
+        });
+
+        // US city coordinates database (major cities)
+        const cityCoords = {};
+
+        // State coordinates for fallback
+        const stateCoords = {
+            'AL': [32.806671, -86.791130], 'AK': [61.370716, -152.404419], 'AZ': [33.729759, -111.431221],
+            'AR': [34.969704, -92.373123], 'CA': [36.116203, -119.681564], 'CO': [39.059811, -105.311104],
+            'CT': [41.597782, -72.755371], 'DE': [39.318523, -75.507141], 'FL': [27.766279, -81.686783],
+            'GA': [33.040619, -83.643074], 'HI': [21.094318, -157.498337], 'ID': [44.240459, -114.478828],
+            'IL': [40.349457, -88.986137], 'IN': [39.849426, -86.258278], 'IA': [42.011539, -93.210526],
+            'KS': [38.526600, -96.726486], 'KY': [37.668140, -84.670067], 'LA': [31.169546, -91.867805],
+            'ME': [44.693947, -69.381927], 'MD': [39.063946, -76.802101], 'MA': [42.230171, -71.530106],
+            'MI': [43.326618, -84.536095], 'MN': [45.694454, -93.900192], 'MS': [32.741646, -89.678696],
+            'MO': [38.456085, -92.288368], 'MT': [46.921925, -110.454353], 'NE': [41.125370, -98.268082],
+            'NV': [38.313515, -117.055374], 'NH': [43.452492, -71.563896], 'NJ': [40.298904, -74.521011],
+            'NM': [34.840515, -106.248482], 'NY': [42.165726, -74.948051], 'NC': [35.630066, -79.806419],
+            'ND': [47.528912, -99.784012], 'OH': [40.388783, -82.764915], 'OK': [35.565342, -96.928917],
+            'OR': [44.572021, -122.070938], 'PA': [40.590752, -77.209755], 'RI': [41.680893, -71.511780],
+            'SC': [33.856892, -80.945007], 'SD': [44.299782, -99.438828], 'TN': [35.747845, -86.692345],
+            'TX': [31.054487, -97.563461], 'UT': [40.150032, -111.862434], 'VT': [44.045876, -72.710686],
+            'VA': [37.769337, -78.169968], 'WA': [47.400902, -121.490494], 'WV': [38.491226, -80.954453],
+            'WI': [44.268543, -89.616508], 'WY': [42.755966, -107.302490], 'DC': [38.897438, -77.026817]
+        };
+
+        // Load city coordinates
+        async function loadCityCoords() {
+            updateLoadStatus('Loading city coordinates...');
+            // We'll geocode on-the-fly using a simple approach
+            // For now, use state centroids with random offset
+        }
+
+        function updateLoadStatus(msg) {
+            document.getElementById('load-status').textContent = msg;
+        }
+
+        function getCoordinates(city, state) {
+            const key = `${city},${state}`;
+            if (cityCoords[key]) {
+                return cityCoords[key];
+            }
+
+            // Use state centroid with deterministic offset based on city name
+            const stateCoord = stateCoords[state];
+            if (!stateCoord) return null;
+
+            // Create deterministic offset from city name
+            let hash = 0;
+            for (let i = 0; i < city.length; i++) {
+                hash = ((hash << 5) - hash) + city.charCodeAt(i);
+                hash = hash & hash;
+            }
+
+            const latOffset = ((hash % 1000) / 1000 - 0.5) * 2;
+            const lngOffset = (((hash >> 10) % 1000) / 1000 - 0.5) * 3;
+
+            const coords = [stateCoord[0] + latOffset, stateCoord[1] + lngOffset];
+            cityCoords[key] = coords;
+            return coords;
+        }
+
+        // Load and parse CSV
+        async function loadData() {
+            updateLoadStatus('Fetching CSV data...');
+
+            Papa.parse('atlas-of-surveillance.csv', {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    updateLoadStatus(`Parsing ${results.data.length} records...`);
+                    allData = results.data.filter(row => row.City && row.State);
+
+                    document.getElementById('total-records').textContent = `${allData.length} records`;
+
+                    populateFilters();
+                    createMarkers(allData);
+
+                    document.getElementById('loading').style.display = 'none';
+                },
+                error: function(err) {
+                    updateLoadStatus(`Error: ${err.message}`);
+                }
+            });
+        }
+
+        function populateFilters() {
+            // States
+            const states = [...new Set(allData.map(r => r.State))].sort();
+            const stateSelect = document.getElementById('state-filter');
+            states.forEach(state => {
+                const opt = document.createElement('option');
+                opt.value = state;
+                opt.textContent = state;
+                stateSelect.appendChild(opt);
+            });
+
+            // Technologies
+            const techCounts = {};
+            allData.forEach(r => {
+                const tech = r.Technology;
+                if (tech) {
+                    techCounts[tech] = (techCounts[tech] || 0) + 1;
+                }
+            });
+
+            const techFiltersDiv = document.getElementById('tech-filters');
+            Object.entries(techCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 20)
+                .forEach(([tech, count]) => {
+                    const div = document.createElement('div');
+                    div.className = 'tech-filter';
+                    div.innerHTML = `
+                        <input type="checkbox" id="tech-${tech}" value="${tech}" checked>
+                        <span>${tech}</span>
+                        <span class="tech-count">(${count})</span>
+                    `;
+                    techFiltersDiv.appendChild(div);
+                });
+        }
+
+        function createMarkers(data) {
+            updateLoadStatus('Creating map markers...');
+            markers.clearLayers();
+
+            // Group by location
+            const locationGroups = {};
+            data.forEach(row => {
+                const key = `${row.City},${row.State}`;
+                if (!locationGroups[key]) {
+                    locationGroups[key] = {
+                        city: row.City,
+                        state: row.State,
+                        records: []
+                    };
+                }
+                locationGroups[key].records.push(row);
+            });
+
+            let markersAdded = 0;
+            Object.values(locationGroups).forEach(loc => {
+                const coords = getCoordinates(loc.city, loc.state);
+                if (!coords) return;
+
+                const marker = L.circleMarker(coords, {
+                    radius: Math.min(5 + Math.log2(loc.records.length) * 3, 20),
+                    fillColor: '#ff4444',
+                    color: '#ff6666',
+                    weight: 1,
+                    opacity: 0.8,
+                    fillOpacity: 0.6
+                });
+
+                // Create popup content
+                const techSummary = {};
+                loc.records.forEach(r => {
+                    if (r.Technology) {
+                        techSummary[r.Technology] = (techSummary[r.Technology] || 0) + 1;
+                    }
+                });
+
+                let popupHtml = `<div class="popup-content">
+                    <h4>${loc.city}, ${loc.state}</h4>
+                    <p><strong>${loc.records.length}</strong> surveillance records</p>
+                    <hr style="border-color: #555; margin: 8px 0;">`;
+
+                // Show tech summary
+                Object.entries(techSummary)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .forEach(([tech, count]) => {
+                        popupHtml += `<div class="tech-item">
+                            <span class="tech-type">${tech}</span>: ${count}
+                        </div>`;
+                    });
+
+                // Show sample agencies
+                const agencies = [...new Set(loc.records.map(r => r.Agency))].slice(0, 5);
+                if (agencies.length > 0) {
+                    popupHtml += `<hr style="border-color: #555; margin: 8px 0;">
+                        <div style="font-size: 11px; color: #888;">Agencies:</div>`;
+                    agencies.forEach(agency => {
+                        popupHtml += `<div style="font-size: 11px;">${agency}</div>`;
+                    });
+                }
+
+                popupHtml += '</div>';
+                marker.bindPopup(popupHtml, { maxWidth: 350 });
+
+                markers.addLayer(marker);
+                markersAdded++;
+            });
+
+            map.addLayer(markers);
+
+            document.getElementById('visible-records').textContent = data.length;
+            document.getElementById('locations-count').textContent = markersAdded;
+        }
+
+        function applyFilters() {
+            const searchTerm = document.getElementById('search').value.toLowerCase();
+            const stateFilter = document.getElementById('state-filter').value;
+
+            const selectedTechs = [];
+            document.querySelectorAll('#tech-filters input:checked').forEach(cb => {
+                selectedTechs.push(cb.value);
+            });
+
+            const filtered = allData.filter(row => {
+                // Search filter
+                if (searchTerm) {
+                    const searchable = `${row.City} ${row.Agency} ${row.County}`.toLowerCase();
+                    if (!searchable.includes(searchTerm)) return false;
+                }
+
+                // State filter
+                if (stateFilter && row.State !== stateFilter) return false;
+
+                // Tech filter
+                if (selectedTechs.length > 0 && !selectedTechs.includes(row.Technology)) return false;
+
+                return true;
+            });
+
+            createMarkers(filtered);
+        }
+
+        function resetFilters() {
+            document.getElementById('search').value = '';
+            document.getElementById('state-filter').value = '';
+            document.querySelectorAll('#tech-filters input').forEach(cb => cb.checked = true);
+            createMarkers(allData);
+        }
+
+        // Initialize
+        loadData();
+    </script>
+</body>
+</html>
