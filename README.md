@@ -7,7 +7,7 @@ An interactive visualization mapping police surveillance capabilities across the
 
 ## Live Demo
 
-[View the Map](https://ringmast4r.github.io/surveillance-capabilities-map/surveillance-map-final.html)
+**[View the Live Map](https://ringmast4r.github.io/surveillance-capabilities-map/surveillance-map-final.html)**
 
 ## Features
 
