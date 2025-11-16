@@ -39,6 +39,27 @@
             background: rgba(0,10,0,0.95); border: 1px solid #00ff00; z-index: 1000;
             max-height: calc(100vh - 40px); overflow-y: auto;
         }
+        .panel-toggle {
+            display: none; position: absolute; top: 10px; right: 10px;
+            background: rgba(0,20,0,0.95); border: 1px solid #00ff00; color: #00ff00;
+            padding: 8px 12px; font-family: 'Courier New', monospace; font-size: 12px;
+            cursor: pointer; z-index: 1001; letter-spacing: 1px;
+        }
+        .panel-toggle:hover { background: #00ff00; color: #000; }
+        @media (max-width: 768px) {
+            .control-panel {
+                display: none; top: 50px; right: 10px; left: 10px; width: auto;
+                max-height: 60vh;
+            }
+            .control-panel.mobile-open { display: block; }
+            .panel-toggle { display: block; }
+            .stats-bar { top: 50px; left: 10px; right: 10px; }
+            .overlay-top { padding: 10px; }
+            .title { font-size: 16px; letter-spacing: 1px; }
+            .subtitle { font-size: 9px; }
+            .stat-box { min-width: 100px; padding: 6px 10px; }
+            .stat-value { font-size: 14px; }
+        }
         .panel-header {
             background: #00ff00; color: #000; padding: 8px 12px;
             font-weight: bold; font-size: 12px; letter-spacing: 2px;
@@ -176,6 +197,8 @@
     </div>
 
     <div id="map"></div>
+
+    <button class="panel-toggle" onclick="toggleMobilePanel()">FILTERS</button>
 
     <div class="control-panel">
         <div class="panel-header">// CONTROL INTERFACE</div>
@@ -627,6 +650,12 @@
         }
 
         function debounce(fn, d) { let t; return () => { clearTimeout(t); t = setTimeout(fn, d); }; }
+        function toggleMobilePanel() {
+            const panel = document.querySelector('.control-panel');
+            const btn = document.querySelector('.panel-toggle');
+            panel.classList.toggle('mobile-open');
+            btn.textContent = panel.classList.contains('mobile-open') ? 'CLOSE' : 'FILTERS';
+        }
         function selectAllTech() {
             document.querySelectorAll('.tech-toggle').forEach(t => { t.classList.add('active'); t.querySelector('input').checked = true; });
             renderMap();
