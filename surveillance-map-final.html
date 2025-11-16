@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>US Police Surveillance Intelligence Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; background: #000; color: #00ff00; overflow: hidden; }
+        #map { height: 100vh; width: 100%; filter: saturate(0.8); }
+
+        .overlay-top {
+            position: absolute; top: 0; left: 0; right: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+            padding: 15px 20px; z-index: 1000; pointer-events: none;
+        }
+        .title { font-size: 24px; font-weight: bold; letter-spacing: 3px; margin-bottom: 5px; }
+        .subtitle { color: #888; font-size: 11px; letter-spacing: 1px; }
+
+        .stats-bar {
+            position: absolute; top: 70px; left: 20px; right: 320px;
+            display: flex; gap: 15px; z-index: 1000; flex-wrap: wrap;
+        }
+        .stat-box {
+            background: rgba(0,20,0,0.9); border: 1px solid #00ff00;
+            padding: 8px 12px; min-width: 130px; cursor: pointer; transition: all 0.2s;
+        }
+        .stat-box:hover { background: rgba(0,40,0,0.9); box-shadow: 0 0 15px rgba(0,255,0,0.3); }
+        .stat-label { font-size: 9px; color: #888; margin-bottom: 2px; }
+        .stat-value { font-size: 18px; font-weight: bold; }
+        .stat-value.money { color: #ffaa00; }
+        .stat-value.flights { color: #ff6666; }
+
+        .control-panel {
+            position: absolute; top: 20px; right: 20px; width: 290px;
+            background: rgba(0,10,0,0.95); border: 1px solid #00ff00; z-index: 1000;
+            max-height: calc(100vh - 40px); overflow-y: auto;
+        }
+        .panel-header {
+            background: #00ff00; color: #000; padding: 8px 12px;
+            font-weight: bold; font-size: 12px; letter-spacing: 2px;
+        }
+        .panel-section { padding: 12px; border-bottom: 1px solid #003300; }
+        .section-title { font-size: 10px; color: #00ff00; margin-bottom: 8px; letter-spacing: 1px; }
+
+        .tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .tech-toggle {
+            display: flex; align-items: center; background: #001100; padding: 6px 8px;
+            border: 1px solid #003300; cursor: pointer; font-size: 10px; transition: all 0.2s;
+        }
+        .tech-toggle:hover { border-color: #00ff00; }
+        .tech-toggle.active { background: #002200; border-color: #00ff00; }
+        .tech-toggle input { display: none; }
+        .tech-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; flex-shrink: 0; }
+        .tech-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tech-count { color: #666; font-size: 9px; margin-left: 4px; }
+
+        .flight-toggle {
+            display: flex; align-items: center; background: #110000; padding: 8px;
+            border: 1px solid #330000; cursor: pointer; font-size: 11px; margin-bottom: 6px;
+        }
+        .flight-toggle:hover { border-color: #ff6666; }
+        .flight-toggle.active { background: #220000; border-color: #ff6666; }
+        .flight-toggle input { display: none; }
+        .flight-color { width: 20px; height: 3px; margin-right: 8px; }
+        .flight-label { flex: 1; color: #ff6666; }
+        .flight-count { color: #888; }
+
+        input[type="text"], select {
+            width: 100%; background: #001100; border: 1px solid #003300;
+            color: #00ff00; padding: 8px; font-family: 'Courier New', monospace; font-size: 11px;
+        }
+        input[type="text"]:focus, select:focus {
+            outline: none; border-color: #00ff00; box-shadow: 0 0 10px rgba(0,255,0,0.3);
+        }
+
+        .btn {
+            background: #003300; border: 1px solid #00ff00; color: #00ff00;
+            padding: 8px 12px; font-family: 'Courier New', monospace; font-size: 11px;
+            cursor: pointer; width: 100%; margin-top: 8px; letter-spacing: 1px; transition: all 0.2s;
+        }
+        .btn:hover { background: #00ff00; color: #000; }
+        .btn-danger { border-color: #ff3333; color: #ff3333; }
+        .btn-danger:hover { background: #ff3333; color: #000; }
+
+        .data-explorer {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.95); z-index: 2000; display: none; flex-direction: column;
+        }
+        .data-explorer.visible { display: flex; }
+        .explorer-header {
+            background: #001100; padding: 15px 20px; border-bottom: 2px solid #00ff00;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .explorer-title { font-size: 18px; letter-spacing: 2px; }
+        .explorer-close {
+            background: none; border: 1px solid #ff3333; color: #ff3333;
+            padding: 5px 15px; cursor: pointer; font-family: 'Courier New', monospace;
+        }
+        .explorer-close:hover { background: #ff3333; color: #000; }
+        .explorer-controls {
+            padding: 10px 20px; background: #000; border-bottom: 1px solid #003300;
+            display: flex; gap: 15px; align-items: center;
+        }
+        .explorer-controls input, .explorer-controls select { width: auto; min-width: 200px; }
+        .explorer-info { color: #888; font-size: 11px; }
+        .explorer-content { flex: 1; overflow: auto; padding: 0; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .data-table th {
+            background: #002200; padding: 10px; text-align: left;
+            position: sticky; top: 0; cursor: pointer; border-bottom: 2px solid #00ff00;
+        }
+        .data-table th:hover { background: #003300; }
+        .data-table td {
+            padding: 8px 10px; border-bottom: 1px solid #002200;
+            max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .data-table tr:hover td { background: #001100; }
+        .data-table .amount { color: #ffaa00; }
+        .data-table .tech-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; color: #000; }
+        .data-table .source-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9px; background: #444; color: #fff; }
+        .export-btn {
+            background: #003300; border: 1px solid #00ff00; color: #00ff00;
+            padding: 5px 15px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 11px;
+        }
+        .export-btn:hover { background: #00ff00; color: #000; }
+
+        .loading {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: #000; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 9999;
+        }
+        .loading-text { font-size: 14px; letter-spacing: 2px; margin-bottom: 20px; }
+        .loading-bar { width: 300px; height: 4px; background: #001100; border: 1px solid #003300; overflow: hidden; }
+        .loading-progress { height: 100%; background: #00ff00; width: 0%; transition: width 0.3s; }
+        .loading-status { margin-top: 10px; font-size: 10px; color: #666; }
+
+        .leaflet-popup-content-wrapper {
+            background: rgba(0,10,0,0.95); color: #00ff00; border: 1px solid #00ff00;
+            border-radius: 0; font-family: 'Courier New', monospace;
+        }
+        .leaflet-popup-tip { background: #00ff00; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #001100; }
+        ::-webkit-scrollbar-thumb { background: #003300; }
+        ::-webkit-scrollbar-thumb:hover { background: #00ff00; }
+    </style>
+</head>
+<body>
+    <div class="overlay-top">
+        <div class="title">SURVEILLANCE INTELLIGENCE MAP</div>
+        <div class="subtitle">EFF ATLAS (2024-2025) + FEDERAL SPENDING (2025) + 1033 PROGRAM + FBI/DHS FLIGHT PATHS</div>
+    </div>
+
+    <div class="stats-bar">
+        <div class="stat-box" onclick="openExplorer('all')">
+            <div class="stat-label">SURVEILLANCE RECORDS</div>
+            <div class="stat-value" id="total-records">---</div>
+        </div>
+        <div class="stat-box" onclick="openExplorer('spending')">
+            <div class="stat-label">FEDERAL SPENDING</div>
+            <div class="stat-value money" id="total-spending">$---</div>
+        </div>
+        <div class="stat-box" onclick="openFlightExplorer()">
+            <div class="stat-label">FLIGHT PATHS</div>
+            <div class="stat-value flights" id="total-flights">---</div>
+        </div>
+        <div class="stat-box" onclick="openExplorer('locations')">
+            <div class="stat-label">LOCATIONS</div>
+            <div class="stat-value" id="total-locations">---</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="control-panel">
+        <div class="panel-header">// CONTROL INTERFACE</div>
+
+        <div class="panel-section">
+            <div class="section-title">SURVEILLANCE FLIGHT PATHS</div>
+            <div class="flight-toggle active" onclick="toggleFlights('FBI')">
+                <input type="checkbox" id="flight-fbi" checked>
+                <div class="flight-color" style="background:#ff4444"></div>
+                <span class="flight-label">FBI AIRCRAFT</span>
+                <span class="flight-count" id="fbi-count">0</span>
+            </div>
+            <div class="flight-toggle active" onclick="toggleFlights('DHS')">
+                <input type="checkbox" id="flight-dhs" checked>
+                <div class="flight-color" style="background:#44aaff"></div>
+                <span class="flight-label">DHS AIRCRAFT</span>
+                <span class="flight-count" id="dhs-count">0</span>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">SEARCH</div>
+            <input type="text" id="search" placeholder="Agency, city, vendor...">
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">STATE</div>
+            <select id="state-filter"><option value="">ALL STATES</option></select>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">TECHNOLOGY TYPES</div>
+            <div class="tech-grid" id="tech-toggles"></div>
+        </div>
+
+        <div class="panel-section">
+            <button class="btn" onclick="selectAllTech()">SELECT ALL TECH</button>
+            <button class="btn btn-danger" onclick="deselectAllTech()">CLEAR TECH</button>
+            <button class="btn" onclick="openExplorer('all')" style="margin-top:15px;">VIEW RAW DATA</button>
+        </div>
+    </div>
+
+    <div class="data-explorer" id="data-explorer">
+        <div class="explorer-header">
+            <div class="explorer-title" id="explorer-title">DATA EXPLORER</div>
+            <button class="explorer-close" onclick="closeExplorer()">CLOSE [X]</button>
+        </div>
+        <div class="explorer-controls">
+            <input type="text" id="explorer-search" placeholder="Filter..." oninput="filterExplorerData()">
+            <select id="explorer-source" onchange="filterExplorerData()">
+                <option value="">All Sources</option>
+                <option value="EFF">EFF Atlas</option>
+                <option value="Federal Contract">Federal Contracts</option>
+                <option value="Federal Grant">Federal Grants</option>
+                <option value="1033 Program">1033 Program</option>
+                <option value="Flight">Flight Paths</option>
+            </select>
+            <button class="export-btn" onclick="exportCSV()">EXPORT CSV</button>
+            <div class="explorer-info" id="explorer-info">0 records</div>
+        </div>
+        <div class="explorer-content">
+            <table class="data-table">
+                <thead><tr>
+                    <th onclick="sortExplorer('state')">STATE</th>
+                    <th onclick="sortExplorer('city')">CITY/LOCATION</th>
+                    <th onclick="sortExplorer('agency')">AGENCY/AIRCRAFT</th>
+                    <th onclick="sortExplorer('tech')">TYPE</th>
+                    <th onclick="sortExplorer('amount')">AMOUNT</th>
+                    <th onclick="sortExplorer('source')">SOURCE</th>
+                    <th>DETAILS</th>
+                </tr></thead>
+                <tbody id="explorer-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="loading-text">INITIALIZING SURVEILLANCE DATABASE</div>
+        <div class="loading-bar"><div class="loading-progress" id="loading-progress"></div></div>
+        <div class="loading-status" id="loading-status">Connecting...</div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <script>
+        const TECH_CATEGORIES = {
+            'Body Cameras': { color: '#00aaff', keywords: ['body camera', 'body-worn', 'bwc', 'axon body'] },
+            'License Plate Readers': { color: '#ff6600', keywords: ['license plate', 'lpr', 'alpr', 'automatic license'] },
+            'Facial Recognition': { color: '#ff0066', keywords: ['facial recognition', 'face recognition', 'biometric', 'clearview'] },
+            'Drones/UAV': { color: '#ffcc00', keywords: ['drone', 'unmanned aerial', 'uav', 'uas', 'quadcopter'] },
+            'Gunshot Detection': { color: '#ff3333', keywords: ['shotspotter', 'gunshot', 'acoustic sensor', 'gunfire', 'soundthinking'] },
+            'Cell Site Simulators': { color: '#cc00ff', keywords: ['stingray', 'cell site simulator', 'imsi catcher', 'cell-site'] },
+            'Video Surveillance': { color: '#00ff99', keywords: ['cctv', 'security camera', 'video surveillance'] },
+            'Predictive Policing': { color: '#ff9900', keywords: ['predictive policing', 'crime prediction', 'predpol'] },
+            'Real-Time Crime Centers': { color: '#ff66cc', keywords: ['real-time crime center', 'rtcc'] },
+            'Third-party Investigative Platforms': { color: '#ff9933', keywords: ['investigative platform', 'third-party', 'palantir', 'babel street', 'thomson reuters', 'lexisnexis'] },
+            'Camera Registry': { color: '#66ccff', keywords: ['camera registry', 'ring', 'neighbors', 'fusus', 'flock safety'] },
+            'Video Analytics': { color: '#cc99ff', keywords: ['video analytics', 'ai analytics', 'briefcam', 'verkada'] },
+            'Fusion Center': { color: '#ff6699', keywords: ['fusion center', 'information sharing'] },
+            'Social Media Monitoring': { color: '#99ccff', keywords: ['social media monitoring', 'geofeedia', 'media sonar'] },
+            'Phone Forensics': { color: '#99ff00', keywords: ['cellebrite', 'graykey', 'phone forensic'] },
+            'Night Vision/Thermal': { color: '#ffffff', keywords: ['night vision', 'thermal', 'infrared', 'nvg'] },
+            'Military Vehicles': { color: '#888888', keywords: ['mrap', 'armored vehicle', 'tactical vehicle'] },
+            'Aircraft': { color: '#aaaaff', keywords: ['helicopter', 'aircraft', 'plane', 'cessna'] },
+            'Other Surveillance': { color: '#666666', keywords: [] }
+        };
+
+        const stateCoords = {
+            'AL': [32.8, -86.8], 'AK': [61.4, -152.4], 'AZ': [33.7, -111.4], 'AR': [35.0, -92.4],
+            'CA': [36.1, -119.7], 'CO': [39.1, -105.3], 'CT': [41.6, -72.8], 'DE': [39.3, -75.5],
+            'FL': [27.8, -81.7], 'GA': [33.0, -83.6], 'HI': [21.1, -157.5], 'ID': [44.2, -114.5],
+            'IL': [40.3, -89.0], 'IN': [39.8, -86.3], 'IA': [42.0, -93.2], 'KS': [38.5, -96.7],
+            'KY': [37.7, -84.7], 'LA': [31.2, -91.9], 'ME': [44.7, -69.4], 'MD': [39.1, -76.8],
+            'MA': [42.2, -71.5], 'MI': [43.3, -84.5], 'MN': [45.7, -93.9], 'MS': [32.7, -89.7],
+            'MO': [38.5, -92.3], 'MT': [46.9, -110.5], 'NE': [41.1, -98.3], 'NV': [38.3, -117.1],
+            'NH': [43.5, -71.6], 'NJ': [40.3, -74.5], 'NM': [34.8, -106.2], 'NY': [42.2, -74.9],
+            'NC': [35.6, -79.8], 'ND': [47.5, -99.8], 'OH': [40.4, -82.8], 'OK': [35.6, -96.9],
+            'OR': [44.6, -122.1], 'PA': [40.6, -77.2], 'RI': [41.7, -71.5], 'SC': [33.9, -80.9],
+            'SD': [44.3, -99.4], 'TN': [35.7, -86.7], 'TX': [31.1, -97.6], 'UT': [40.2, -111.9],
+            'VT': [44.0, -72.7], 'VA': [37.8, -78.2], 'WA': [47.4, -121.5], 'WV': [38.5, -81.0],
+            'WI': [44.3, -89.6], 'WY': [42.8, -107.3], 'DC': [38.9, -77.0]
+        };
+
+        const map = L.map('map', { zoomControl: false }).setView([39.8, -98.6], 4);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '', subdomains: 'abcd', maxZoom: 19
+        }).addTo(map);
+
+        const cityCache = {};
+        function getCoords(city, state) {
+            const key = `${city},${state}`;
+            if (cityCache[key]) return cityCache[key];
+
+            // Try exact match from database (uppercase)
+            const dbKey = `${city.toUpperCase()},${state}`;
+            if (cityDatabase[dbKey]) {
+                cityCache[key] = cityDatabase[dbKey];
+                return cityDatabase[dbKey];
+            }
+
+            // Try normalized city name (remove special chars)
+            const normalized = city.toUpperCase().replace(/[^A-Z ]/g, '').trim();
+            const normKey = `${normalized},${state}`;
+            if (cityDatabase[normKey]) {
+                cityCache[key] = cityDatabase[normKey];
+                return cityDatabase[normKey];
+            }
+
+            // Try removing common suffixes (Beach, City, Township, etc.)
+            const suffixes = [' BEACH', ' CITY', ' TOWNSHIP', ' VILLAGE', ' TOWN', ' HEIGHTS', ' SPRINGS', ' PARK'];
+            for (const suffix of suffixes) {
+                if (normalized.endsWith(suffix)) {
+                    const stripped = normalized.replace(suffix, '').trim();
+                    const strippedKey = `${stripped},${state}`;
+                    if (cityDatabase[strippedKey]) {
+                        cityCache[key] = cityDatabase[strippedKey];
+                        return cityDatabase[strippedKey];
+                    }
+                }
+            }
+
+            // Try first word only (for compound names)
+            const firstWord = normalized.split(' ')[0];
+            const firstKey = `${firstWord},${state}`;
+            if (cityDatabase[firstKey]) {
+                cityCache[key] = cityDatabase[firstKey];
+                return cityDatabase[firstKey];
+            }
+
+            // Fallback to state centroid with offset
+            const sc = stateCoords[state];
+            if (!sc) return null;
+            let hash = 0;
+            for (let i = 0; i < city.length; i++) hash = ((hash << 5) - hash) + city.charCodeAt(i);
+            const coords = [sc[0] + ((hash % 1000) / 1000 - 0.5) * 1.5, sc[1] + (((hash >> 10) % 1000) / 1000 - 0.5) * 2];
+            cityCache[key] = coords;
+            return coords;
+        }
+
+        function classifyTech(text) {
+            if (!text) return 'Other Surveillance';
+            const lower = text.toLowerCase();
+
+            // Direct mapping for EFF Atlas technology names
+            const directMap = {
+                'body-worn cameras': 'Body Cameras',
+                'automated license plate readers': 'License Plate Readers',
+                'face recognition': 'Facial Recognition',
+                'drones': 'Drones/UAV',
+                'gunshot detection': 'Gunshot Detection',
+                'cell-site simulator': 'Cell Site Simulators',
+                'predictive policing': 'Predictive Policing',
+                'real-time crime center': 'Real-Time Crime Centers',
+                'third-party investigative platforms': 'Third-party Investigative Platforms',
+                'camera registry': 'Camera Registry',
+                'video analytics': 'Video Analytics',
+                'fusion center': 'Fusion Center'
+            };
+
+            // Check direct mapping first
+            if (directMap[lower]) return directMap[lower];
+
+            // Then check keywords
+            for (const [cat, cfg] of Object.entries(TECH_CATEGORIES)) {
+                if (cfg.keywords.some(kw => lower.includes(kw))) return cat;
+            }
+            return 'Other Surveillance';
+        }
+
+        let allRecords = [], filteredRecords = [], explorerData = [];
+        let flightData = [], fbiFlightLayer, dhsFlightLayer;
+        let explorerSort = { field: 'amount', dir: -1 };
+        let techCounts = {};
+        let cityDatabase = {}; // Real city coordinates
+        let markers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 });
+        map.addLayer(markers);
+
+        function setProgress(p) { document.getElementById('loading-progress').style.width = p + '%'; }
+        function setStatus(s) { document.getElementById('loading-status').textContent = s; }
+
+        async function loadAllData() {
+            setStatus('Loading city coordinates...'); setProgress(5);
+            await loadCityDatabase();
+            setStatus('Loading EFF Atlas...'); setProgress(15);
+            await loadEFF();
+            setStatus('Loading Federal Contracts...'); setProgress(35);
+            await loadContracts();
+            setStatus('Loading Federal Grants...'); setProgress(50);
+            await loadGrants();
+            setStatus('Loading 1033 Equipment...'); setProgress(65);
+            await load1033();
+            setStatus('Loading Flight Paths...'); setProgress(80);
+            await loadFlights();
+            setStatus('Rendering...'); setProgress(95);
+            buildUI();
+            renderMap();
+            renderFlights();
+            setProgress(100);
+            setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+        }
+
+        function loadCityDatabase() {
+            return fetch('city_coords.json')
+                .then(r => r.json())
+                .then(data => {
+                    cityDatabase = data;
+                    console.log(`Loaded ${Object.keys(data).length} city coordinates`);
+                })
+                .catch(err => console.warn('City database not loaded:', err));
+        }
+
+        // Map EFF Atlas technology names to our categories
+        const EFF_TECH_MAP = {
+            'Body-worn Cameras': 'Body Cameras',
+            'Automated License Plate Readers': 'License Plate Readers',
+            'Face Recognition': 'Facial Recognition',
+            'Drones': 'Drones/UAV',
+            'Gunshot Detection': 'Gunshot Detection',
+            'Cell-site Simulator': 'Cell Site Simulators',
+            'Predictive Policing': 'Predictive Policing',
+            'Real-Time Crime Center': 'Real-Time Crime Centers',
+            'Third-party Investigative Platforms': 'Third-party Investigative Platforms',
+            'Camera Registry': 'Camera Registry',
+            'Video Analytics': 'Video Analytics',
+            'Fusion Center': 'Fusion Center'
+        };
+
+        function loadEFF() {
+            return new Promise(resolve => {
+                Papa.parse('atlas-of-surveillance.csv', {
+                    download: true, header: true, skipEmptyLines: true,
+                    complete: r => {
+                        r.data.forEach(row => {
+                            if (!row.City || !row.State) return;
+                            let tech = row.Technology || '';
+                            // Map EFF tech name to our category, or classify from summary
+                            tech = EFF_TECH_MAP[tech] || classifyTech(tech) || classifyTech(row.Summary);
+                            allRecords.push({
+                                city: row.City, state: row.State, agency: row.Agency || '',
+                                tech: tech,
+                                amount: 0, source: 'EFF', description: row.Summary || ''
+                            });
+                        });
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        function loadContracts() {
+            return new Promise(resolve => {
+                Papa.parse('surveillance-contracts.csv', {
+                    download: true, header: true, skipEmptyLines: true,
+                    complete: r => {
+                        r.data.forEach(row => {
+                            if (!row.recipient_city_name || !row.recipient_state_code) return;
+                            const desc = row.award_description || row.product_or_service_code_description || '';
+                            allRecords.push({
+                                city: row.recipient_city_name, state: row.recipient_state_code,
+                                agency: row.recipient_name || '', tech: classifyTech(desc),
+                                amount: parseFloat(row.federal_action_obligation) || 0,
+                                source: 'Federal Contract', description: desc
+                            });
+                        });
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        function loadGrants() {
+            return new Promise(resolve => {
+                Papa.parse('surveillance-grants.csv', {
+                    download: true, header: true, skipEmptyLines: true,
+                    complete: r => {
+                        r.data.forEach(row => {
+                            if (!row.recipient_city_name || !row.recipient_state_code) return;
+                            const desc = row.award_description || row.assistance_listing_title || '';
+                            allRecords.push({
+                                city: row.recipient_city_name, state: row.recipient_state_code,
+                                agency: row.recipient_name || '', tech: classifyTech(desc),
+                                amount: parseFloat(row.federal_action_obligation) || 0,
+                                source: 'Federal Grant', description: desc
+                            });
+                        });
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        function load1033() {
+            return new Promise(resolve => {
+                Papa.parse('wapo-1033-data.csv', {
+                    download: true, header: true, skipEmptyLines: true,
+                    complete: r => {
+                        r.data.slice(0, 30000).forEach(row => {
+                            if (!row.State) return;
+                            allRecords.push({
+                                city: row['Station Name (LEA)']?.split(' ')[0] || row.State,
+                                state: row.State, agency: row['Station Name (LEA)'] || '',
+                                tech: classifyTech(row['Item Name']),
+                                amount: parseFloat(row.Cost) || 0,
+                                source: '1033 Program', description: row['Item Name'] || ''
+                            });
+                        });
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        function loadFlights() {
+            return new Promise(resolve => {
+                fetch('flight_paths.json')
+                    .then(r => r.json())
+                    .then(data => {
+                        flightData = data;
+                        document.getElementById('total-flights').textContent = data.length.toLocaleString();
+                        const fbiCount = data.filter(f => f.agency === 'FBI').length;
+                        const dhsCount = data.filter(f => f.agency === 'DHS').length;
+                        document.getElementById('fbi-count').textContent = fbiCount;
+                        document.getElementById('dhs-count').textContent = dhsCount;
+                        resolve();
+                    })
+                    .catch(() => resolve());
+            });
+        }
+
+        function renderFlights() {
+            if (fbiFlightLayer) map.removeLayer(fbiFlightLayer);
+            if (dhsFlightLayer) map.removeLayer(dhsFlightLayer);
+
+            const fbiPaths = [], dhsPaths = [];
+
+            flightData.forEach(flight => {
+                if (flight.path.length < 2) return;
+                const line = L.polyline(flight.path, {
+                    color: flight.agency === 'FBI' ? '#ff4444' : '#44aaff',
+                    weight: 1.5, opacity: 0.4
+                });
+                line.bindPopup(`<div style="font-family:monospace;font-size:11px;">
+                    <strong style="color:#ff6666">${flight.agency} SURVEILLANCE FLIGHT</strong><br>
+                    Aircraft: ${flight.name}<br>
+                    N-Number: ${flight.n_number}<br>
+                    Waypoints: ${flight.point_count}<br>
+                    Avg Alt: ${flight.avg_altitude} ft<br>
+                    Avg Speed: ${flight.avg_speed} knots<br>
+                    Start: ${flight.start_time}<br>
+                    End: ${flight.end_time}
+                </div>`);
+                if (flight.agency === 'FBI') fbiPaths.push(line);
+                else dhsPaths.push(line);
+            });
+
+            fbiFlightLayer = L.layerGroup(fbiPaths);
+            dhsFlightLayer = L.layerGroup(dhsPaths);
+
+            if (document.getElementById('flight-fbi').checked) fbiFlightLayer.addTo(map);
+            if (document.getElementById('flight-dhs').checked) dhsFlightLayer.addTo(map);
+        }
+
+        function toggleFlights(agency) {
+            const el = document.getElementById(`flight-${agency.toLowerCase()}`);
+            el.checked = !el.checked;
+            el.parentElement.classList.toggle('active', el.checked);
+            if (agency === 'FBI') {
+                if (el.checked) fbiFlightLayer.addTo(map);
+                else map.removeLayer(fbiFlightLayer);
+            } else {
+                if (el.checked) dhsFlightLayer.addTo(map);
+                else map.removeLayer(dhsFlightLayer);
+            }
+        }
+
+        function buildUI() {
+            allRecords.forEach(r => techCounts[r.tech] = (techCounts[r.tech] || 0) + 1);
+            const container = document.getElementById('tech-toggles');
+            Object.entries(TECH_CATEGORIES).forEach(([name, cfg]) => {
+                const count = techCounts[name] || 0;
+                if (count === 0) return;
+                const div = document.createElement('div');
+                div.className = 'tech-toggle active';
+                div.innerHTML = `<input type="checkbox" id="tech-${name}" checked>
+                    <div class="tech-color" style="background:${cfg.color}"></div>
+                    <span class="tech-name">${name}</span>
+                    <span class="tech-count">${count}</span>`;
+                div.onclick = () => {
+                    const cb = div.querySelector('input');
+                    cb.checked = !cb.checked;
+                    div.classList.toggle('active', cb.checked);
+                    renderMap();
+                };
+                container.appendChild(div);
+            });
+
+            const states = [...new Set(allRecords.map(r => r.state))].sort();
+            const sel = document.getElementById('state-filter');
+            states.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s; opt.textContent = s;
+                sel.appendChild(opt);
+            });
+            sel.onchange = renderMap;
+            document.getElementById('search').oninput = debounce(renderMap, 300);
+        }
+
+        function debounce(fn, d) { let t; return () => { clearTimeout(t); t = setTimeout(fn, d); }; }
+        function selectAllTech() {
+            document.querySelectorAll('.tech-toggle').forEach(t => { t.classList.add('active'); t.querySelector('input').checked = true; });
+            renderMap();
+        }
+        function deselectAllTech() {
+            document.querySelectorAll('.tech-toggle').forEach(t => { t.classList.remove('active'); t.querySelector('input').checked = false; });
+            renderMap();
+        }
+
+        function renderMap() {
+            markers.clearLayers();
+            const search = document.getElementById('search').value.toLowerCase();
+            const state = document.getElementById('state-filter').value;
+            const techs = new Set();
+            document.querySelectorAll('.tech-toggle input:checked').forEach(cb => techs.add(cb.id.replace('tech-', '')));
+
+            filteredRecords = allRecords.filter(r => {
+                if (!techs.has(r.tech)) return false;
+                if (state && r.state !== state) return false;
+                if (search && !`${r.city} ${r.state} ${r.agency} ${r.description}`.toLowerCase().includes(search)) return false;
+                return true;
+            });
+
+            const locs = {};
+            let spending = 0;
+            filteredRecords.forEach(r => {
+                const k = `${r.city},${r.state}`;
+                if (!locs[k]) locs[k] = { city: r.city, state: r.state, techs: {}, total: 0 };
+                if (!locs[k].techs[r.tech]) locs[k].techs[r.tech] = { count: 0, amount: 0 };
+                locs[k].techs[r.tech].count++;
+                locs[k].techs[r.tech].amount += r.amount;
+                locs[k].total += r.amount;
+                spending += r.amount;
+            });
+
+            Object.values(locs).forEach(loc => {
+                const coords = getCoords(loc.city, loc.state);
+                if (!coords) return;
+                const sorted = Object.entries(loc.techs).sort((a, b) => b[1].count - a[1].count);
+                const dom = sorted[0][0];
+                const color = TECH_CATEGORIES[dom]?.color || '#666';
+                const total = sorted.reduce((s, [_, d]) => s + d.count, 0);
+                const marker = L.circleMarker(coords, {
+                    radius: Math.min(6 + Math.log2(total + 1) * 4, 30),
+                    fillColor: color, color: '#00ff00', weight: 1, opacity: 0.9, fillOpacity: 0.7
+                });
+                let html = `<div style="max-width:400px;font-size:11px;">
+                    <div style="font-size:14px;font-weight:bold;margin-bottom:6px;">${loc.city}, ${loc.state}</div>
+                    <div style="margin-bottom:8px;">${total} records | $${loc.total.toLocaleString()}</div>`;
+                sorted.slice(0, 8).forEach(([tech, data]) => {
+                    html += `<div style="background:#001100;padding:4px;margin-bottom:3px;border-left:3px solid ${TECH_CATEGORIES[tech]?.color || '#666'}">
+                        ${tech}: ${data.count} ${data.amount > 0 ? '| $' + data.amount.toLocaleString() : ''}</div>`;
+                });
+                html += `<button onclick="openExplorerForLocation('${loc.city}','${loc.state}')" style="background:#003300;border:1px solid #00ff00;color:#00ff00;padding:6px;width:100%;margin-top:8px;cursor:pointer;">VIEW ALL RECORDS</button></div>`;
+                marker.bindPopup(html, { maxWidth: 450 });
+                markers.addLayer(marker);
+            });
+
+            document.getElementById('total-records').textContent = filteredRecords.length.toLocaleString();
+            document.getElementById('total-locations').textContent = Object.keys(locs).length.toLocaleString();
+            document.getElementById('total-spending').textContent = '$' + Math.round(spending).toLocaleString();
+        }
+
+        function openExplorer(mode) {
+            document.getElementById('data-explorer').classList.add('visible');
+            explorerData = mode === 'spending' ? filteredRecords.filter(r => r.amount > 0) : [...filteredRecords];
+            document.getElementById('explorer-title').textContent = mode === 'spending' ? 'FEDERAL SPENDING RECORDS' : 'ALL SURVEILLANCE RECORDS';
+            document.getElementById('explorer-search').value = '';
+            document.getElementById('explorer-source').value = '';
+            renderExplorerTable();
+        }
+
+        function openFlightExplorer() {
+            document.getElementById('data-explorer').classList.add('visible');
+            explorerData = flightData.map(f => ({
+                city: 'Airborne', state: '-', agency: f.name, tech: 'Aircraft',
+                amount: 0, source: 'Flight', description: `${f.agency} | N${f.n_number} | ${f.point_count} waypoints | Alt: ${f.avg_altitude}ft`
+            }));
+            document.getElementById('explorer-title').textContent = 'SURVEILLANCE FLIGHT PATHS';
+            document.getElementById('explorer-search').value = '';
+            document.getElementById('explorer-source').value = 'Flight';
+            renderExplorerTable();
+        }
+
+        function openExplorerForLocation(city, state) {
+            document.getElementById('data-explorer').classList.add('visible');
+            explorerData = filteredRecords.filter(r => r.city === city && r.state === state);
+            document.getElementById('explorer-title').textContent = `RECORDS: ${city}, ${state}`;
+            renderExplorerTable();
+        }
+
+        function closeExplorer() { document.getElementById('data-explorer').classList.remove('visible'); }
+        function filterExplorerData() { renderExplorerTable(); }
+
+        function sortExplorer(field) {
+            explorerSort = explorerSort.field === field ? { field, dir: explorerSort.dir * -1 } : { field, dir: field === 'amount' ? -1 : 1 };
+            renderExplorerTable();
+        }
+
+        function renderExplorerTable() {
+            const search = document.getElementById('explorer-search').value.toLowerCase();
+            const src = document.getElementById('explorer-source').value;
+            let data = explorerData.filter(r => {
+                if (src && r.source !== src) return false;
+                if (search && !`${r.city} ${r.state} ${r.agency} ${r.tech} ${r.description}`.toLowerCase().includes(search)) return false;
+                return true;
+            });
+            data.sort((a, b) => {
+                let av = a[explorerSort.field], bv = b[explorerSort.field];
+                if (typeof av === 'string') av = av.toLowerCase();
+                if (typeof bv === 'string') bv = bv.toLowerCase();
+                return av < bv ? -explorerSort.dir : av > bv ? explorerSort.dir : 0;
+            });
+            const tbody = document.getElementById('explorer-tbody');
+            tbody.innerHTML = data.slice(0, 1000).map(r => `<tr>
+                <td>${r.state}</td><td>${r.city}</td><td title="${r.agency}">${r.agency.substring(0, 50)}</td>
+                <td><span class="tech-badge" style="background:${TECH_CATEGORIES[r.tech]?.color || '#666'}">${r.tech}</span></td>
+                <td class="amount">${r.amount > 0 ? '$' + r.amount.toLocaleString() : '-'}</td>
+                <td><span class="source-badge">${r.source}</span></td>
+                <td title="${r.description}">${r.description.substring(0, 80)}</td>
+            </tr>`).join('');
+            document.getElementById('explorer-info').textContent = `${Math.min(data.length, 1000)} of ${data.length} records`;
+        }
+
+        function exportCSV() {
+            const search = document.getElementById('explorer-search').value.toLowerCase();
+            const src = document.getElementById('explorer-source').value;
+            let data = explorerData.filter(r => {
+                if (src && r.source !== src) return false;
+                if (search && !`${r.city} ${r.state} ${r.agency} ${r.tech} ${r.description}`.toLowerCase().includes(search)) return false;
+                return true;
+            });
+            const csv = Papa.unparse(data);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'surveillance_export.csv';
+            a.click();
+        }
+
+        loadAllData();
+    </script>
+</body>
+</html>

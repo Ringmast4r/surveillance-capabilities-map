@@ -1,0 +1,22 @@
+# Compressed archives
+*.zip
+
+# Backup files
+*_backup.json
+city_coords_fixed.json
+
+# Temporary directories
+temp_extract/
+
+# Large raw data not needed for web
+usaspending-all-*.zip
+us-places-geonames.zip
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
